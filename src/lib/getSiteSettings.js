@@ -78,19 +78,31 @@ export async function getSiteSettings(customerCodeOrPracticeId) {
     const headers = { Authorization: `Bearer ${apiKey}` };
 
     try {
-      const [practiceRes, websiteRes, settingsRes] = await Promise.all([
-        fetch(`https://passport.nevadacloud.com/api/v1/public/practices/${practiceId}`),
-        fetch(`https://eyecareportal.herokuapp.com/api/website/${practiceId}/0`, { headers }),
-        fetch(`https://www.ocumail.com/api/settings?setting_object_id=${practiceId}&setting_object_type=Practice`, { headers })
-      ]);
+      const practiceRes = await fetch(`https://passport.nevadacloud.com/api/v1/public/practices/${practiceId}`);
+      if (!practiceRes.ok) return null; // We at least need the practice info
 
-      if (!practiceRes.ok || !websiteRes.ok) return null;
+      const practiceData = await practiceRes.json();
 
-      const [practiceData, websiteData, settingsData] = await Promise.all([
-        practiceRes.json(),
-        websiteRes.json(),
-        settingsRes.ok ? settingsRes.json() : []
-      ]);
+      // Fetch website and settings, but don't fail properly if they are down/missing
+      let websiteData = {};
+      let settingsData = [];
+
+      try {
+        const [websiteRes, settingsRes] = await Promise.all([
+          fetch(`https://eyecareportal.herokuapp.com/api/website/${practiceId}/0`, { headers }),
+          fetch(`https://www.ocumail.com/api/settings?setting_object_id=${practiceId}&setting_object_type=Practice`, { headers })
+        ]);
+
+        if (websiteRes.ok) {
+           websiteData = await websiteRes.json();
+        }
+
+        if (settingsRes.ok) {
+           settingsData = await settingsRes.json();
+        }
+      } catch (innerError) {
+        console.warn('Partial failure fetching website/settings data:', innerError);
+      }
 
       const primaryColorSetting = Array.isArray(settingsData)
         ? settingsData.find(s => s.setting_name === 'PrimaryColor')
